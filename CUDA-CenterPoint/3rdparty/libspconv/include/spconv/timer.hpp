@@ -22,25 +22,25 @@ namespace spconv {
 class EventTimer {
  public:
   EventTimer() {
-    check_cuda_api(cudaEventCreate(&begin_));
-    check_cuda_api(cudaEventCreate(&end_));
+    checkRuntime(cudaEventCreate(&begin_));
+    checkRuntime(cudaEventCreate(&end_));
   }
 
   virtual ~EventTimer() {
-    check_cuda_api(cudaEventDestroy(begin_));
-    check_cuda_api(cudaEventDestroy(end_));
+    checkRuntime(cudaEventDestroy(begin_));
+    checkRuntime(cudaEventDestroy(end_));
   }
 
   void start(void *stream) {
     stream_ = (cudaStream_t)stream;
-    check_cuda_api(cudaEventRecord(begin_, (cudaStream_t)stream));
+    checkRuntime(cudaEventRecord(begin_, (cudaStream_t)stream));
   }
 
   float stop(const char *prefix, bool print = true) {
     float times = 0;
-    check_cuda_api(cudaEventRecord(end_, stream_));
-    check_cuda_api(cudaEventSynchronize(end_));
-    check_cuda_api(cudaEventElapsedTime(&times, begin_, end_));
+    checkRuntime(cudaEventRecord(end_, stream_));
+    checkRuntime(cudaEventSynchronize(end_));
+    checkRuntime(cudaEventElapsedTime(&times, begin_, end_));
     if (print) printf("[Times %s]: %.3f ms\n", prefix, times);
     return times;
   }

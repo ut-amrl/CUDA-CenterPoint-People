@@ -20,41 +20,46 @@
 
 namespace spconv {
 
-#define check_cuda_api(call) spconv::check_cuda_api_(call, #call, __LINE__, __FILE__)
-#define check_cuda_kernel(...)                                                            \
+#ifdef __SPCONV_FAILED_WITH_ABORT__
+#define __SPCONV_ABORT__   abort()
+#else
+#define __SPCONV_ABORT__
+#endif
+
+#define checkRuntime(call) spconv::check_runtime(call, #call, __LINE__, __FILE__)
+#define checkKernel(...)                                                            \
   do {                                                                              \
+    /*printf("Launch kernel  " #__VA_ARGS__ "  ==== " __FILE__ ":%d ========\n", __LINE__);*/                       \
     __VA_ARGS__;                                                                    \
-    spconv::check_cuda_api_(cudaPeekAtLastError(), #__VA_ARGS__, __LINE__, __FILE__); \
+    spconv::check_runtime(cudaPeekAtLastError(), #__VA_ARGS__, __LINE__, __FILE__); \
   } while (0)
 
-#define spconv_assertf(cond, fmt, ...)                                                                 \
+#define Assertf(cond, fmt, ...)                                                                 \
   do {                                                                                          \
     if (!(cond)) {                                                                              \
       spconv::logger_output(__FILE__, __LINE__, spconv::LoggerLevel::Error, "Assert failed 💀. %s in file %s:%d, message: " fmt, #cond, __FILE__, \
-              __LINE__, __VA_ARGS__);                                                           \
+              __LINE__);                                                           \
+      __SPCONV_ABORT__;                                                                                  \
     }                                                                                           \
   } while (false)
-
-#define spconv_asserts(cond, s)                                                                      \
+#define Asserts(cond, s)                                                                      \
   do {                                                                                        \
     if (!(cond)) {                                                                            \
       spconv::logger_output(__FILE__, __LINE__, spconv::LoggerLevel::Error, "Assert failed 💀. %s in file %s:%d, message: " s, #cond, __FILE__, \
               __LINE__);                                                                      \
+      __SPCONV_ABORT__;                                                                                \
     }                                                                                         \
   } while (false)
-
-#define spconv_assert(cond)                                                                     \
+#define Assert(cond)                                                                     \
   do {                                                                                   \
     if (!(cond)) {                                                                       \
       spconv::logger_output(__FILE__, __LINE__, spconv::LoggerLevel::Error, "Assert failed 💀. %s in file %s:%d", #cond, __FILE__, __LINE__); \
+      __SPCONV_ABORT__;                                                                           \
     }                                                                                    \
   } while (false)
 
-#define spconv_logf(level, fmt, ...)  spconv::logger_output(__FILE__, __LINE__, level, fmt, __VA_ARGS__);
-#define spconv_log(level, msg)        spconv::logger_output(__FILE__, __LINE__, level, "%s", msg);
-
 Exported std::string format(const char *fmt, ...);
-Exported bool check_cuda_api_(cudaError_t e, const char *call, int line, const char *file);
+Exported bool check_runtime(cudaError_t e, const char *call, int line, const char *file);
 
 };  // namespace spconv
 

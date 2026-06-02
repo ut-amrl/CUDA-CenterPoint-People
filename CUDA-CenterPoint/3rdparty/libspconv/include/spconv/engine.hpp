@@ -23,7 +23,7 @@ namespace spconv {
 #define Exported __attribute__((visibility("default")))
 
 enum class Precision : int { None = 0, Float16 = 1, Int8 = 2 };
-enum class TensorLayout : int { None = 0, NCHW = 1, NCHW32 = 2, NHWzC = 3 };
+enum class TensorLayout : int { None = 0, NCHW = 1, NCHW32 = 2 };
 enum class LoggerLevel : int {Verb = 0, Warn = 1, Error = 2, Quiet = 99};
 
 class ILogger{
@@ -158,7 +158,7 @@ public:
   Exported virtual void push_output(ITensor* value) = 0;
 
   // build engine
-  Exported virtual std::shared_ptr<Engine> build(Precision precision, bool sortmask=false, bool enable_blackwell=false, bool with_auxiliary_stream=false, void* stream = nullptr) = 0;
+  Exported virtual std::shared_ptr<Engine> build(Precision precision, void* stream = nullptr) = 0;
 };
 
 /**

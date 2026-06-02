@@ -59,6 +59,11 @@ class Params
     static const unsigned int num_classes = 10;
     const char *class_name[num_classes] = { "car", "truck", "construction_vehicle", "bus", "trailer", "barrier", "motorcycle", "bicycle", "pedestrian", "traffic_cone"};
 
+    // Lidar people detection: keep only the pedestrian class in the final output.
+    // class_name[8] == "pedestrian" (task 5, local class 0 -> task_num_stride[5] + 0 = 8).
+    static const int pedestrian_class_id = 8;
+    const bool pedestrian_only = true;
+
     const float out_size_factor = 8;
     const float voxel_size[2] = { 0.075, 0.075, };
     const float pc_range[2] = { -54, -54, };

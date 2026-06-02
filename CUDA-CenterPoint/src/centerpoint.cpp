@@ -217,6 +217,16 @@ int CenterPoint::doinfer(void* points, unsigned int point_num, cudaStream_t stre
             }
         }
     }
+
+    // Filter detections to pedestrians only (lidar people detection). The per-task
+    // NMS above already ran over every class, so suppression stays correct; here we
+    // simply drop non-pedestrian boxes from the final list.
+    if (params_.pedestrian_only) {
+        nms_pred_.erase(std::remove_if(nms_pred_.begin(), nms_pred_.end(),
+                            [](const Bndbox &b) { return b.id != Params::pedestrian_class_id; }),
+                        nms_pred_.end());
+    }
+
     timing_post_.push_back(timer_.stop("Decode + NMS", verbose_));
     if (verbose_) {
         std::cout << "Detection NUM: " << nms_pred_.size() << std::endl;

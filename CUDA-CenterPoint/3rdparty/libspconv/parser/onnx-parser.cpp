@@ -94,14 +94,14 @@ static std::vector<int> get_attribute_as_intarray(const onnx::NodeProto& node, c
     auto ints = get_attribute(node, name).ints();
     std::vector<int> output(ints.size());
     for (size_t i = 0; i < ints.size(); ++i) 
-        output[i] = static_cast<int>(ints[i]);
+        output[i] = ints[i];
     return output;
 };
 
-std::shared_ptr<Engine> load_engine_from_onnx(const std::string& onnx_file, Precision precision, bool sortmask, bool enable_blackwell, bool with_auxiliary_stream, unsigned int fixed_launch_points, void* stream){
+std::shared_ptr<Engine> load_engine_from_onnx(const std::string& onnx_file, Precision precision, void* stream, bool mark_all_output){
 
     LOGV("Load onnx from: %s", onnx_file.c_str());
-    bool mark_all_output = false;
+
     onnx::ModelProto model;
     std::fstream fin(onnx_file, std::ios::binary | std::ios::in);
     if (!model.ParseFromIstream(&fin)) {
@@ -118,16 +118,23 @@ std::shared_ptr<Engine> load_engine_from_onnx(const std::string& onnx_file, Prec
         tensor_map_by_name[name] = builder->push_input(name.c_str());
     }
 
+    const char* fixed_launch_points_str = getenv("SPCONV_FIXED_LAUNCH_POINTS");
     std::vector<spconv::ITensor*> collect_outputs;
     for (int i = 0; i < model.graph().node_size(); ++i) {
         auto& node = model.graph().node(i);
-        unsigned int local_fixed_launch_points = fixed_launch_points;
+        unsigned int fixed_launch_points = 5000;
         if(has_attribute(node, "fixed_launch_points")){
-            local_fixed_launch_points = get_attribute(node, "fixed_launch_points").i();
-            LOGV("using fixed_launch_points from attribute: %d for node: %s", local_fixed_launch_points, node.name().c_str());
+            fixed_launch_points = get_attribute(node, "fixed_launch_points").i();
+            LOGV("using fixed_launch_points from attribute: %d for node: %s", fixed_launch_points, node.name().c_str());
+        }else if(fixed_launch_points_str != nullptr){
+            LOGV("using fixed_launch_points from environment variable SPCONV_FIXED_LAUNCH_POINTS: %s for node: %s", fixed_launch_points_str, node.name().c_str());
+            fixed_launch_points = atoi(fixed_launch_points_str);
+        }else{
+            LOGV("Using default fixed_launch_points: %d for node: %s", fixed_launch_points, node.name().c_str());
         }
         
         if (node.op_type() == "SparseConvolution") {
+
             auto x = tensor_map_by_name[node.input(0)];
             auto weight = get_initializer_data(graph, node.input(1));
             auto bias   = get_initializer_data(graph, node.input(2));
@@ -160,7 +167,7 @@ std::shared_ptr<Engine> load_engine_from_onnx(const std::string& onnx_file, Prec
                 get_attribute(node, "input_dynamic_range").f(),
                 get_attribute(node, "subm").i(),
                 output_bound,
-                local_fixed_launch_points,
+                fixed_launch_points,
                 rulebook.c_str(),
                 get_attribute(node, "precision").s() == "int8" ? Precision::Int8 : Precision::Float16,
                 get_attribute(node, "output_precision").s() == "int8" ? Precision::Int8 : Precision::Float16,
@@ -197,8 +204,7 @@ std::shared_ptr<Engine> load_engine_from_onnx(const std::string& onnx_file, Prec
             auto output_shape = get_attribute_as_intarray(node, "output_shape");
             auto format = get_attribute(node, "format").s();
             auto input_dynamic_range = get_attribute(node, "input_dynamic_range").f();
-            auto output_layout_string = get_attribute(node, "output_layout").s();
-            auto layout = output_layout_string == "NCHW32" ? spconv::TensorLayout::NCHW32 : (output_layout_string == "NHWzC" ? spconv::TensorLayout::NHWzC : spconv::TensorLayout::NCHW);
+            auto layout = get_attribute(node, "output_layout").s() == "NCHW32" ? spconv::TensorLayout::NCHW32 : spconv::TensorLayout::NCHW;
             auto n = builder->push_dense(node.name().c_str(), x, format.c_str(), node.output(0).c_str(), input_spatial_shape, output_shape, layout, input_dynamic_range, fixed_launch_points);
             tensor_map_by_name[node.output(0)] = n->output(0);
         } else if (node.op_type() == "Reshape") {
@@ -224,9 +230,9 @@ std::shared_ptr<Engine> load_engine_from_onnx(const std::string& onnx_file, Prec
         collect_outputs.push_back(tensor_map_by_name[name]);
     }
 
-    for (int i = 0; i < (int)collect_outputs.size(); ++i) {
+    for (int i = 0; i < collect_outputs.size(); ++i) {
         builder->push_output(collect_outputs[i]);
     }
-    return builder->build(precision, sortmask, enable_blackwell, with_auxiliary_stream, stream);
+    return builder->build(precision, stream);
 }
 };
