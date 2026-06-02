@@ -48,9 +48,9 @@ static std::string format_shape(const nvinfer1::Dims& shape){
     char* p = buf;
     for(int i = 0; i < shape.nbDims; ++i){
         if(i + 1 < shape.nbDims)
-            p += sprintf(p, "%d x ", shape.d[i]);
+            p += sprintf(p, "%ld x ", (long)shape.d[i]);
         else
-            p += sprintf(p, "%d", shape.d[i]);
+            p += sprintf(p, "%ld", (long)shape.d[i]);
     }
     return buf;
 }
@@ -94,9 +94,10 @@ public:
     nvinfer1::IRuntime* runtime_   = nullptr;
 
     virtual ~EngineImpl(){
-        if(context_) context_->destroy();
-        if(engine_)  engine_->destroy();
-        if(runtime_) runtime_->destroy();
+        // TensorRT 10 removed destroy(); objects are released with delete.
+        if(context_) delete context_;
+        if(engine_)  delete engine_;
+        if(runtime_) delete runtime_;
     }
 
     bool load(const std::string& file){
@@ -113,7 +114,7 @@ public:
             return false;
         }
 
-        engine_ = runtime_->deserializeCudaEngine(data.data(), data.size(), 0);
+        engine_ = runtime_->deserializeCudaEngine(data.data(), data.size());
         if(engine_ == nullptr){
             printf("Failed to deserial CUDAEngine.\n");
             return false;
@@ -128,19 +129,28 @@ public:
     }
 
     virtual int64_t getBindingNumel(const std::string& name) override{
-        nvinfer1::Dims d = engine_->getBindingDimensions(engine_->getBindingIndex(name.c_str()));
-        return std::accumulate(d.d, d.d + d.nbDims, 1, std::multiplies<int64_t>());
+        nvinfer1::Dims d = engine_->getTensorShape(name.c_str());
+        return std::accumulate(d.d, d.d + d.nbDims, (int64_t)1, std::multiplies<int64_t>());
     }
 
     virtual std::vector<int64_t> getBindingDims(const std::string& name) override{
-        nvinfer1::Dims dims = engine_->getBindingDimensions(engine_->getBindingIndex(name.c_str()));
+        nvinfer1::Dims dims = engine_->getTensorShape(name.c_str());
         std::vector<int64_t> output(dims.nbDims);
-        std::transform(dims.d, dims.d + dims.nbDims, output.begin(), [](int32_t v){return v;});
+        std::transform(dims.d, dims.d + dims.nbDims, output.begin(), [](int64_t v){return v;});
         return output;
     }
 
     virtual bool forward(const std::initializer_list<void*>& buffers, void* stream = nullptr) override{
-        return context_->enqueueV2(buffers.begin(), (cudaStream_t)stream, nullptr);
+        // TensorRT 10 uses name-based I/O. getIOTensorName(i) preserves the same
+        // order as the deprecated binding indices, so the positional buffer list
+        // (1 input + 36 head outputs) maps 1:1 onto the I/O tensors.
+        const int n = engine_->getNbIOTensors();
+        auto it = buffers.begin();
+        for(int i = 0; i < n && it != buffers.end(); ++i, ++it){
+            if(!context_->setTensorAddress(engine_->getIOTensorName(i), *it))
+                return false;
+        }
+        return context_->enqueueV3((cudaStream_t)stream);
     }
 
     virtual void print() override{
@@ -150,10 +160,12 @@ public:
 			return;
 		}
 
+        const int n = engine_->getNbIOTensors();
         int numInput = 0;
         int numOutput = 0;
-        for(int i = 0; i < engine_->getNbBindings(); ++i){
-            if(engine_->bindingIsInput(i))
+        for(int i = 0; i < n; ++i){
+            const char* name = engine_->getIOTensorName(i);
+            if(engine_->getTensorIOMode(name) == nvinfer1::TensorIOMode::kINPUT)
                 numInput++;
             else
                 numOutput++;
@@ -161,24 +173,16 @@ public:
 
 		printf("Engine %p detail\n", this);
 		printf("Inputs: %d\n", numInput);
-		for(int i = 0; i < numInput; ++i){
-            int ibinding = i;
-			printf("\t%d.%s : \tshape {%s}, %s\n",
-                i,
-                engine_->getBindingName(ibinding),
-                format_shape(engine_->getBindingDimensions(ibinding)).c_str(),
-                data_type_string(engine_->getBindingDataType(ibinding))
-            );
-		}
-
-		printf("Outputs: %d\n", numOutput);
-		for(int i = 0; i < numOutput; ++i){
-			int ibinding = i + numInput;
-			printf("\t%d.%s : \tshape {%s}, %s\n",
-                i,
-                engine_->getBindingName(ibinding),
-                format_shape(engine_->getBindingDimensions(ibinding)).c_str(),
-                data_type_string(engine_->getBindingDataType(ibinding))
+        printf("Outputs: %d\n", numOutput);
+		for(int i = 0, in = 0, out = 0; i < n; ++i){
+            const char* name = engine_->getIOTensorName(i);
+            bool is_input = engine_->getTensorIOMode(name) == nvinfer1::TensorIOMode::kINPUT;
+			printf("\t%s %d.%s : \tshape {%s}, %s\n",
+                is_input ? "Input " : "Output",
+                is_input ? in++ : out++,
+                name,
+                format_shape(engine_->getTensorShape(name)).c_str(),
+                data_type_string(engine_->getTensorDataType(name))
             );
 		}
     }

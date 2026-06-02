@@ -22,6 +22,7 @@
  */
  
 #include "centerpoint.h"
+#include "onnx-parser.hpp"
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -142,15 +143,17 @@ int CenterPoint::doinfer(void* points, unsigned int point_num, cudaStream_t stre
     }
 
     timer_.start(stream);
-    auto result = scn_engine_->forward(
-        {valid_num, 5}, spconv::DType::Float16, d_voxel_features,
-        {valid_num, 4}, spconv::DType::Int32,   d_voxel_indices,
-        1, sparse_shape, stream
-    );
+    // libspconv 1.3.x name-based I/O: set the input feature/indice tensors by
+    // reference, run, then read the dense output feature map for the RPN.
+    scn_engine_->input(0)->features().reference(d_voxel_features, {valid_num, 5}, spconv::DataType::Float16, true);
+    scn_engine_->input(0)->indices().reference(d_voxel_indices, {valid_num, 4}, spconv::DataType::Int32, true);
+    scn_engine_->input(0)->set_grid_size(sparse_shape);
+    scn_engine_->forward(stream);
+    void* scn_features = scn_engine_->output(0)->features().ptr();
     timing_scn_engine_.push_back(timer_.stop("3D Backbone", verbose_));
 
     timer_.start(stream);
-    trt_->forward({result->features_data(), d_reg_[0], d_height_[0], d_dim_[0], d_rot_[0], d_vel_[0], d_hm_[0],
+    trt_->forward({scn_features, d_reg_[0], d_height_[0], d_dim_[0], d_rot_[0], d_vel_[0], d_hm_[0],
                                                 d_reg_[1], d_height_[1], d_dim_[1], d_rot_[1], d_vel_[1], d_hm_[1],
                                                 d_reg_[2], d_height_[2], d_dim_[2], d_rot_[2], d_vel_[2], d_hm_[2],
                                                 d_reg_[3], d_height_[3], d_dim_[3], d_rot_[3], d_vel_[3], d_hm_[3],

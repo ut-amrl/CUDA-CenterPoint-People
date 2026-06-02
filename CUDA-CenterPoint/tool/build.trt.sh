@@ -24,9 +24,9 @@ trt_version=8503
 
 if [ ! -f "model/rpn_centerhead_sim.plan.${trt_version}" ]; then
     echo Building the model: model/rpn_centerhead_sim.plan.${trt_version}, this will take 2 minutes. Wait a moment 🤗🤗🤗~.
-    trtexec --onnx=model/rpn_centerhead_sim.onnx \
+    ${TRTEXEC:-/usr/src/tensorrt/bin/trtexec} --onnx=model/rpn_centerhead_sim.onnx \
         --saveEngine=model/rpn_centerhead_sim.plan.${trt_version} \
-        --workspace=4096 --fp16 --outputIOFormats=fp16:chw \
+        --memPoolSize=workspace:4096 --fp16 --outputIOFormats=fp16:chw \
         --inputIOFormats=fp16:chw --verbose --dumpLayerInfo \
         --dumpProfile --separateProfileRun \
         --profilingVerbosity=detailed > model/rpn_centerhead_sim.${trt_version}.log 2>&1
