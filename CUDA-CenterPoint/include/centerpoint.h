@@ -82,6 +82,10 @@ class CenterPoint {
 
   public:
     CenterPoint(std::string modelFile, bool verbose = false);
+    // Overload allowing the sparse-conv (SCN) backbone ONNX path to be supplied
+    // explicitly, so the engine can run from an arbitrary working directory
+    // (e.g. a ROS node) instead of relying on the cwd-relative default.
+    CenterPoint(std::string modelFile, std::string scnFile, bool verbose = false);
     ~CenterPoint(void);
 
     int prepare();

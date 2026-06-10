@@ -45,7 +45,12 @@ double getAverage(std::vector<T> const& v) {
     return std::accumulate(v.begin(), v.end(), 0.0) / v.size();
 }
 
-CenterPoint::CenterPoint(std::string modelFile, bool verbose): verbose_(verbose)
+CenterPoint::CenterPoint(std::string modelFile, bool verbose)
+    : CenterPoint(modelFile, "../model/centerpoint.scn.onnx", verbose)
+{
+}
+
+CenterPoint::CenterPoint(std::string modelFile, std::string scnFile, bool verbose): verbose_(verbose)
 {
     trt_ = TensorRT::load(modelFile);
     if(trt_ == nullptr) abort();
@@ -53,7 +58,7 @@ CenterPoint::CenterPoint(std::string modelFile, bool verbose): verbose_(verbose)
     pre_.reset(new PreProcessCuda());
     post_.reset(new PostProcessCuda());
 
-    scn_engine_ = spconv::load_engine_from_onnx("../model/centerpoint.scn.onnx");
+    scn_engine_ = spconv::load_engine_from_onnx(scnFile);
 
     checkCudaErrors(cudaMallocHost((void **)&h_detections_num_, sizeof(unsigned int)));
     checkCudaErrors(cudaMemset(h_detections_num_, 0, sizeof(unsigned int)));
